@@ -1,0 +1,19 @@
+{
+  "name": "antv-orgtree",
+  "version": "1.0.5",
+  "description": "基于antV封装tree",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@antv/g6": "^4.2.5"
+  },
+  "devDependencies": {
+    "webpack": "^4.20.2",
+    "webpack-cli": "^3.1.2",
+    "webpack-dev-server": "^3.0.0"
+  }
+}
