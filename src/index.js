@@ -1,42 +1,49 @@
+
 import G6 from '@antv/g6'
-export default  class simpleTree {
+/* eslint-disable */
+export default class simpleTree {
   constructor ( settings ) {
-    const {id, data, direction,level, size, fill, stroke, radius, nodeLineWidth, textColor, fontSize,edgeLineWidth,edgeColor, eventType,treeType,quotaName,quotaUnit,highLight,minimap, minimapId, defindNode,nodeHtml,levelColorList } = settings
-    console.log('输入的参数===', settings)
-    // const colorList = ['#91d5ff', '#99CCCC', '#FFCCCC', '#0099CC', '#99CC66'] // 暂时测试用
-    const Color = fill || '#91d5ff' // 全局主色默认配置
-    this.marketColor = stroke || fill || '#91d5ff' // 标签颜色，优先继承stroke的颜色
-    this.highLight = highLight || Color // 节点高亮色，搜索功能启动时可以设置此功能
-    this.levelColorList = levelColorList || [] // 节点分层级颜色
+    const {id, data, direction,level, nodeStyle = {},lineStyle = {}, textStyle= {}, eventType,treeType,rootTreeType, quotaName,quotaUnit,minimap, minimapId, defindNode,nodeHtml,subMultiple, isDragCanvas = true, isZoomCanvas = true } = settings
+    const Color = nodeStyle.fill || '#91d5ff' // 全局主色默认配置
+    this.marketColor = nodeStyle.stroke || nodeStyle.fill || '#91d5ff' // 标签颜色，优先继承stroke的颜色
+    this.highLight = nodeStyle.highLightColor || Color // 节点高亮色，搜索功能启动时可以设置此功能
+    this.levelColorList = nodeStyle.levelColorList || [] // 节点分层级颜色
+    this.edgeColor = lineStyle.stroke
     // 属性
     this.domID = id
     this.level = level// 打开层级
     this.direction = direction || 'TB' //树的方向，TB/LR
-    this.size = size || [180, 60] // 节点大小
+    this.size = nodeStyle.size || [180, 60] // 节点大小
     this.data = data
+    this.labelName = textStyle.labelName || 'label'
+    this.labelDesName = textStyle.labelDesName || 'labelDes'
+    this.subRectFill = nodeStyle.subFill || '#fff'
+    this.subTextColor = textStyle.subTextColor || '#000'
+    this.subFontSize = textStyle.subFontSize || 12
+    this.subMultiple = Number(subMultiple) || 1 // type is 2 or 3,subRect 宽是主文本的几倍
     this.__defaultNodeStyle = {
-      fill: fill || Color,
-      stroke: stroke || Color,
-      radius: radius || 5,
-      lineWidth: nodeLineWidth || 1,
+      fill: nodeStyle.fill || Color,
+      stroke: nodeStyle.stroke || Color,
+      radius: nodeStyle.radius || 5,
+      lineWidth: nodeStyle.lineWidth || 1,
       cursor: false
     }
     this.__defaultLabelCfg = {
       // position: 'middle',
       // autoRotate: true,
       style: {
-        fill: textColor || '#000',
-        fontSize: fontSize || 12,
+        fill: textStyle.textColor || '#000',
+        fontSize: textStyle.fontSize || 12,
       }
     }
 
     this.__defaultEdgeStyle = {
-      stroke: edgeColor || stroke  || Color,
-      lineWidth: edgeLineWidth || 1,
+      stroke: lineStyle.stroke || nodeStyle.stroke  || Color,
+      lineWidth: lineStyle.lineWidth || 1,
       endArrow: {
         path: defindNode ? /* 'M 0,0 L -10,5 L -10,-5 Z' */ '': G6.Arrow.triangle(10, 10, this._getArrowOffet()), // 使用内置箭头路径函数，参数为箭头的 宽度、长度、偏移量（默认为 0，与 d 对应）
         d: this._getArrowOffet(),
-        fill: edgeColor || stroke  || Color,
+        fill: lineStyle.stroke || nodeStyle.stroke  || Color,
       }
     }
     this.__plugins = []
@@ -50,9 +57,11 @@ export default  class simpleTree {
     // 功能配置
     this.eventType = eventType || 'click' // none 表示没有事件展开节点 默认click事件
     this.treeType = Number(treeType) || 1
+    this.rootTreeType = Number(rootTreeType)
     this.quotaName = quotaName
     this.quotaUnit = quotaUnit
-
+    this.isDragCanvas = isDragCanvas
+    this.isZoomCanvas = isZoomCanvas
     // 内部属性
     this.graph = {}
     
@@ -64,9 +73,6 @@ export default  class simpleTree {
     // 设置定义规则
     this.defindNode && this._domHtmlSet()
     this.level && this.setOpenLevel() // 层级设置
-    if (this.levelColorList && this.levelColorList.length > 0) {
-      this._addLevelAttr()
-    }
     // 初始化图例
     this._createGraph()
     
@@ -85,8 +91,7 @@ export default  class simpleTree {
   _domHtmlSet () {
     if (this.nodeHtml) {
     /**
-     * 规则1： 外围只有一个div,即只有一个根节点元素
-     * 规则2： 变量控制方式： &&{name}  ===》 对应映射为 ${cfg.name} ，name必须为data里面的属性
+     * 规则： 外围只有一个div,即只有一个根节点元素
      * &{id}&   + cfg.id + 
      */
       let NODESTR = this.nodeHtml.trim()
@@ -110,7 +115,6 @@ export default  class simpleTree {
             }
           }
         }
-        // console.log(888, NODESTR[i] , stackNode)
       }
       // this.nodeHtml = this.nodeHtml.replace('&&', '$')
       /**
@@ -207,14 +211,15 @@ export default  class simpleTree {
       `${this_.domID}_node`,
       {
         draw (cfg, group) {
-          const styles = this.getShapeStyle(cfg);
+          const styles = this.getShapeStyle(cfg)
           const { labelCfg, style } = cfg
           const w = styles.width
           const h = styles.height
-          let pointer = this_._getCollapseXY(w, h)
-          // console.log('====', pointer, cfg)
           let keyShape = {}
-          const getKeyShape = function () {
+          let pointer = this_._getCollapseXY(w, h)
+          cfg.level = cfg.depth
+          // console.log('====', cfg.collapsed)
+          const getKeyShape = function (treeType) {
             // mainShape 最外层边框
             keyShape = group.addShape('rect', {
               attrs: {
@@ -229,11 +234,12 @@ export default  class simpleTree {
               name: 'mainShape'
             })
             // mainText 数据属性id
+            let MainTextDomY = 1 / (this_.subMultiple + 1) * h/2 // 1/(x+1)*h/2
             group.addShape('text', {
               attrs: {
-                text: this_._fittingString(cfg.label, w, labelCfg.style.fontSize),
+                text: cfg[this_.labelName] || '', // this_._fittingString(cfg.label, w, labelCfg.style.fontSize),
                 x: w/2,
-                y: this_.treeType === 1 ? h / 2 : h / 4, // set y by treeType
+                y: treeType === 1 ? h / 2 : MainTextDomY, // set y by treeType
                 textAlign: 'center',
                 textBaseline: 'middle',
                 fontSize: labelCfg.style.fontSize,
@@ -241,29 +247,20 @@ export default  class simpleTree {
               },
               name: 'mainText'
             })
-            // let imageSize = w > h ? this_.treeType === 1 ? h/2 : h/4 : this_.treeType === 1 ? w/2 : w/4 
-            // group.addShape('image', {
-            //   attrs: {
-            //     x: 0,
-            //     y: this_.treeType === 1 ? h / 2 - imageSize/2 : h / 4 - imageSize/2, // set y by treeType
-            //     width: imageSize,
-            //     height: imageSize,
-            //     img: 'https://gw.alipayobjects.com/mdn/rms_8fd2eb/afts/img/A*sxK0RJ1UhNkAAAAAAAAAAABkARQnAQ',
-            //   },
-            //   // must be assigned in G6 3.3 and later versions. it can be any value you want
-            //   name: 'mainImage',
-            // })
           }
-          const getSubShape = function () {
+          const getSubShape = function (treeType) {
+          let DomY = h / (this_.subMultiple + 1) // h/(x+1) x是subMultiple
+          let domH = this_.subMultiple * h / (this_.subMultiple + 1) // hx/(x+1)
+          let TextDomY = DomY + domH/2
             // subShape 
             // treeType in 2 or 3
             group.addShape('rect', {
               attrs: {
                 x: 0,
-                y: h/2,
+                y: DomY,
                 width: w,
-                height: h/2,
-                fill: '#fff',
+                height: domH, 
+                fill: this_.subRectFill,
                 stroke: this_.levelColorList.length > 0 ? this_.levelColorList[cfg.level] || style.stroke : style.stroke,
                 radius: [0, 0,style.radius, style.radius]
               },
@@ -277,28 +274,38 @@ export default  class simpleTree {
              * value
              * unit
              */
-            const subText = this_.treeType === 2
-                            ? this_._fittingString(cfg.labelDes || '本节点内容描述说明', w, labelCfg.style.fontSize)
-                            : `${this_.quotaName} : ${cfg.value || '--'} ${this_.quotaUnit}`
+            // const subText = treeType === 2
+            //                 ? this_._fittingString(cfg.labelDes || '本节点内容描述说明', w, labelCfg.style.fontSize)
+            //                 : `${this_.quotaName} : ${cfg.value || '--'} ${this_.quotaUnit}`
+            const subText = treeType === 2
+                            ? cfg[this_.labelDesName] || ' '
+                            : `${this_.quotaName} : ${cfg.value || ' '} ${this_.quotaUnit}`
             group.addShape('text', {
               attrs: {
                 text: subText,
                 x: w/2,
-                y: 3*h/4,
+                y:TextDomY,
                 textAlign: 'center',
                 textBaseline: 'middle',
-                fontSize: labelCfg.style.fontSize,
-                // fill: labelCfg.style.fill
-                fill: '#000'
+                fontSize: this_.subFontSize,
+                fill: this_.subTextColor
               },
               name: 'subText'
             })
           }
-          // 加载基础shape
-          getKeyShape()
-          if (this_.treeType === 2 || this_.treeType === 3) {
-            getSubShape()
+          function drawShape(type) {
+            getKeyShape(type)
+            if (type === 2 || type === 3) {
+              getSubShape(type)
+            }
           }
+          // 根节点
+          if (cfg.depth === 0 && this_.rootTreeType) {
+            drawShape(this_.rootTreeType)
+          } else {
+            // 加载基础shape
+            drawShape(this_.treeType)
+          } 
           // market
           if (cfg.children && cfg.children.length) {
             group.addShape('marker', {
@@ -306,7 +313,7 @@ export default  class simpleTree {
                 ...pointer.text,
                 r: 6,
                 cursor: 'pointer',
-                symbol: G6.Marker.collapse,
+                symbol: cfg.collapsed ? G6.Marker.expand : G6.Marker.collapse,
                 stroke: this_.levelColorList.length > 0 ? this_.levelColorList[cfg.level] || this_.marketColor : this_.marketColor,
                 fill: '#fff'
               },
@@ -336,29 +343,15 @@ export default  class simpleTree {
           const w = styles.width
           const h = styles.height
           let pointer = this_._getCollapseXY(w, h)
-          // console.log('===111=', w, h, pointer)
           let key = {}
           /**
            * 自定义Dom
            * 
            */
-          /*  `
-          <div style="background-color: #fff; border: 2px solid #5B8FF9; border-radius: 5px; width: ${cfg.size[0]
-                }px; height: ${cfg.size[1]}px; display: flex;">
-            <div style="height: 100%; width: 33%; background-color: #CDDDFD;display: flex;
-              align-items: center;justify-content: center;">
-              <img alt="img" src="https://gw.alipayobjects.com/mdn/rms_f8c6a0/afts/img/A*Q_FQT6nwEC8AAAAAAAAAAABkARQnAQ" width="20" height="20" />  
-            </div>
-            <span style="margin: auto; color: #5B8FF9">${cfg.id}</span>
-          </div>
-          ` */
-          // let tmp = `<span style="margin: auto; color: #5B8FF9">${cfg.id}</span>`
-          // console.log('222wwww', w, h )
-
           key = group.addShape('dom', {
             attrs: {
-              width: cfg.size[0],
-              height: cfg.size[1],
+              width: w,
+              height: h,
               // 传入 DOM 的 html
               html: this_._analyseHtmlVar(this_.nodeHtml, cfg),
             },
@@ -382,24 +375,6 @@ export default  class simpleTree {
           }
           return key
         },
-       /*  setState(name, value, item) {
-          //  状态名称、状态、元素实例
-            if (name === 'collapse') {
-              const group = item.getContainer();
-              const collapseText = group.find((e) => e.get('name') === 'collapse-text');
-              if (collapseText) {
-                if (!value) {
-                  collapseText.attr({
-                    text: '-',
-                  });
-                } else {
-                  collapseText.attr({
-                    text: '+',
-                  });
-                }
-              }
-            }
-          }, */
         setState(name, value, item) {
         //  状态名称、状态、元素实例
           if (name === 'collapse') {
@@ -418,17 +393,14 @@ export default  class simpleTree {
         const endPoint = cfg.endPoint
 
         const { style } = cfg
-        let nodeLevel  = group.cfg.item.getSource().getModel().level
-        // console.log('line===', group.cfg.item.getModel() ,group.cfg.item.getTarget().getModel().level, group.cfg.item.getSource().getModel().level)
-        // console.log(group.cfg.item._cfg.group.cfg.item._cfg.group.cfg.item._cfg.target._cfg.model.level)
-        // console.log('lineStyle===', cfg)
+        let nodeLevel  = group.cfg.item.getSource().getModel().depth
         // 箭头颜色
-        if (this_.levelColorList.length > 0)  cfg.style.endArrow.fill = this_.levelColorList[nodeLevel] || cfg.style.endArrow.fill 
+        if (this_.levelColorList.length > 0 && !this_.edgeColor)  cfg.style.endArrow.fill = this_.levelColorList[nodeLevel] || cfg.style.endArrow.fill 
         // 线
         const shape = group.addShape('path', {
           attrs: {
             // fill: 'red',
-            stroke: this_.levelColorList.length > 0 ? this_.levelColorList[nodeLevel] || style.stroke : style.stroke,
+            stroke: this_.edgeColor ? this_.edgeColor : (this_.levelColorList.length > 0 ? this_.levelColorList[nodeLevel] || style.stroke : style.stroke),
             endArrow: style.endArrow,
             path: this_._getEdgePath(startPoint, endPoint)
           }
@@ -443,7 +415,7 @@ export default  class simpleTree {
     const container = document.getElementById(this.domID)
     const width = container.scrollWidth
     const height = container.scrollHeight
-    
+    // console.log('初始化===',this_.size)
     const defaultLayout = {
       type: 'compactBox',
       direction: this.direction,
@@ -460,7 +432,7 @@ export default  class simpleTree {
         return this_.size[1]
       },
       getHGap: function getHGap() { // 节点横向间距
-        return this_.direction === 'TB' ?  this_.size[0] / 2 : this_.size[0] / 1.2 
+        return this_.direction === 'TB' ?  (this_.size[0] / 2) + 20 : this_.size[0] + 20 
       },
     }
     // 注册自定义节点、边
@@ -472,9 +444,13 @@ export default  class simpleTree {
       linkCenter: true,
       plugins: this.__plugins,
       renderer:this.defindNode ? 'svg' : 'canvas',
-      modes: {
-        default: ['drag-canvas', 'zoom-canvas'],
-      },
+      // modes: {
+      //   default: ['drag-canvas', {
+      //     type: 'zoom-canvas',
+      //     minZoom: 0.3,
+      //     maxZoom: 3,
+      //   }],
+      // },
       defaultNode: {
         type: this.defindNode ? `${this_.domID}_htmlNode` : `${this_.domID}_node`,
         size: this_.size,
@@ -497,6 +473,16 @@ export default  class simpleTree {
       // fitView: true, // 是否将图适配到画布中
       // fitCenter: true,
     })
+    // 拖拽
+    this.isDragCanvas && this.graph.addBehaviors({
+      type:'drag-canvas'
+    })
+    // 缩放
+    this.isZoomCanvas && this.graph.addBehaviors({
+      type: 'zoom-canvas',
+      minZoom: 0.3,
+      maxZoom: 3
+    })
   }
   _getArrowOffet () {
     // 箭头的偏移
@@ -515,6 +501,7 @@ export default  class simpleTree {
     })
   }
   _fittingString  (str, maxWidth, fontSize)  {
+    // 暂时废除此功能
     // 处理问字过长显示为...
     if (!str) return
     const ellipsis = '...';
@@ -561,26 +548,26 @@ export default  class simpleTree {
       return {
         text: {
           x: w/2,
-          y: this.defindNode ?  h + 5 : h + 2,
+          y: h + 2,
         }
       }
     } else if (this.direction === 'LR') {
       return {
         text: {
-          x: w + 5 ,
+          x: w + 2 ,
           y: h/2 -1,
         }
       }
     } else if (this.direction === 'RL'){
       return {
         text: {
-          x: -5 ,
+          x: -2 ,
           y: h/2 -1,
         }
       }
     }
   }
-  _addLevelAttr () {
+ /*  _addLevelAttr () {
     // 添加层级属性，为不同层级自定义样式
     this.data.level = 0 // 根元素层级为1
     this.data.label = 'wwww'
@@ -594,7 +581,7 @@ export default  class simpleTree {
     }
     addLev(this.data.children, 0)
     // console.log('添加层级后的数据', this.data)
-  }
+  } */
   setOpenLevel (level = Number(this.level)) {
     if(level === 1) {
       return this.data.collapsed = true
@@ -654,11 +641,21 @@ export default  class simpleTree {
     this.graph.data(this.data);
     this.graph.render();
     this.graph.fitView();
+    if (this.graph.getZoom() > 1.5) {
+      this.graph.zoom(1.5)
+      this.graph.fitCenter()
+    }
   }
   // 对外事件
   EventSetLevel (data) {
     this.setOpenLevel(data)
     this._render()
+    // console.log('窗口比例', this.graph.getZoom())
+    // if (this.graph.getZoom() > 1.5) {
+    //   this.graph.zoom(1.5)
+    //   this.graph.fitCenter()
+    // }
+
   }
   EventSearchTree (key) {
     if (!key) {
